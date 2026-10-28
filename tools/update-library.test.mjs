@@ -19,7 +19,13 @@ async function run({library={anime:[]},episodes=[],confirmValue=true,conflict=fa
   const write=calls.find(c=>c.method==='PUT');
   return {result,calls,body:write?JSON.parse(write.body):null,library:write?JSON.parse(Buffer.from(JSON.parse(write.body).content,'base64').toString('utf8')):null};
 }
-const episode=(number,url='https://dood.to/e/new')=>({number,title:`الحلقة ${number}`,links:[{label:'Dood FHD',url}]});
+const episode=(number,url='https://dood.to/e/new')=>({number,title:`الحلقة ${number}`,links:[{label:'Dood FHD',quality:'FHD',url}]});
+test('Repairs generic titles and keeps player labels when iframe URLs repeat',async()=>{
+  const e=episode(1);e.title='مشاهدة';e.links[0].type='player';e.links.push({label:'',type:'iframe',url:e.links[0].url});
+  const out=await run({episodes:[e]});const saved=out.library.anime[0].episodes[0];
+  assert.equal(saved.title,'الحلقة 1');assert.equal(saved.links.length,1);
+  assert.equal(saved.links[0].label,'Dood FHD');assert.equal(saved.links[0].type,'player');assert.equal(saved.links[0].quality,'FHD');
+});
 test('Merges padded episode numbers and preserves shows, links and metadata',async()=>{
   const existing={anime:[{title:'Test Anime',custom:'keep',episodes:[{number:'01',title:'الحلقة 1',links:[{url:'https://old.example/video',quality:'FHD'}]}]},{title:'Other',episodes:[]}]};
   const out=await run({library:existing,episodes:[episode(1),episode(2)]});

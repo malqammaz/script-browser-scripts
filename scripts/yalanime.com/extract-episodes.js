@@ -32,7 +32,7 @@ for (const a of document.querySelectorAll('a[href]')) {
   u.hash = '';
   const key = u.href;
   const old = candidates.get(key);
-  if (!old || numberOf(text) !== null) candidates.set(key, { number, title: text || `Episode ${number ?? ''}`, url: key });
+  if (!old || numberOf(text) !== null) candidates.set(key, { number, title: number === null ? text : `الحلقة ${number}`, url: key });
 }
 // On Yalanime the watch links identify this show's episodes precisely.
 let episodes = [...candidates.values()];
@@ -52,8 +52,13 @@ function extract(doc, base) {
   const add = (raw, label, type) => {
     const url = absolute(raw, base);
     if (!url) return;
-    const key = `${type}:${url}`;
-    if (!found.has(key)) found.set(key, { label: clean(label), type, url });
+    const key = url;
+    const old = found.get(key);
+    const rank = {player:4, media:3, iframe:2, 'host-link':1};
+    if (!old || rank[type] > rank[old.type]) {
+      const title = clean(label) || old?.label || new URL(url).hostname;
+      found.set(key, { label: title, type, url, quality: title.match(/\b(?:FHD|HD|SD|4K|1080p|720p|480p)\b/i)?.[0] || old?.quality || '' });
+    }
   };
   for (const el of doc.querySelectorAll('[data-server], [data-embed], [data-video], [data-src], iframe[src], video[src], video source[src], a[href]')) {
     const label = el.textContent || el.getAttribute('title') || el.getAttribute('aria-label') || '';
@@ -99,7 +104,7 @@ for (const episode of episodes) {
   if (episode !== episodes[episodes.length - 1]) await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY_MS));
 }
 return {
-  title: document.title.split(/\s+[—–|]\s*/)[0].replace(/^أنمي\s+/,'').replace(/\s+\d{4}\s+مترجم.*$/,'').trim(),
+  title: document.title.split(/\s+[—–|]\s*/)[0].replace(/^[اأإ]نمي\s+/,'').replace(/\s+\d{4}\s+مترجم.*$/,'').trim(),
   page: location.href,
   discovered,
   processed: results.length,

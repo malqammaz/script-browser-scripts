@@ -61,10 +61,21 @@ try {
     const number=episodeKey(episode.number);
     if(!Number.isFinite(number) || number<0)throw new Error('رقم حلقة غير صالح؛ لم يتم رفع أي تعديل.');
     let old=show.episodes.find(e=>e && episodeKey(e.number)===number);
-    if(!old){old={number,title:episode.title || `الحلقة ${number}`,links:[]};show.episodes.push(old);added++;}else updated++;
+    const title=(!episode.title || /^مشاهدة(?: الحلقة)?$/.test(episode.title.trim())) ? `الحلقة ${number}` : episode.title;
+    if(!old){old={number,title,links:[]};show.episodes.push(old);added++;}else {updated++;if(!old.title || /^مشاهدة(?: الحلقة)?$/.test(old.title.trim()))old.title=title;}
     if(!Array.isArray(old.links))throw new Error('صيغة الروابط المخزنة غير صحيحة.');
     // Preserve previous links and metadata; refresh matching URLs, add new URLs.
-    for(const link of episode.links){const existing=old.links.find(l=>l.url===link.url);if(existing)Object.assign(existing,link);else old.links.push({...link});}
+    for(const link of episode.links){
+      const existing=old.links.find(l=>l.url===link.url);
+      const rank={player:4,media:3,iframe:2,'host-link':1};
+      const normalized={...link,label:link.label || new URL(link.url).hostname};
+      if(!normalized.quality)normalized.quality=normalized.label.match(/\b(?:FHD|HD|SD|4K|1080p|720p|480p)\b/i)?.[0] || '';
+      if(existing){
+        if((rank[link.type] || 0)>=(rank[existing.type] || 0)){
+          for(const [key,value] of Object.entries(normalized))if(value!=='' && value!==null && value!==undefined)existing[key]=value;
+        }
+      }else old.links.push(normalized);
+    }
   }
   show.episodes.sort((a,b)=>episodeKey(a.number)-episodeKey(b.number));
   if(JSON.stringify(library)===before)return {unchanged:true,message:'المكتبة محدثة؛ لا يوجد تعديل لرفعه.'};
