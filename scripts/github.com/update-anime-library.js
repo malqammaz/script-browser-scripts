@@ -3,11 +3,14 @@ if (location.origin !== 'https://github.com') throw new Error('افتح github.c
 const endpoint = 'https://api.github.com/repos/malqammaz/anime-library/contents/library.json';
 const branch = 'main';
 const input = await new Promise(resolve => {
+  if (document.querySelector('[data-anime-library-update]')) throw new Error('نافذة التحديث مفتوحة بالفعل.');
   const dialog = document.createElement('dialog');
+  dialog.setAttribute('data-anime-library-update', '');
   dialog.dir = 'rtl';
   dialog.style.cssText = 'width:min(560px,90vw);background:#172125;color:white;border:1px solid #59734e;border-radius:16px;padding:24px';
   dialog.innerHTML = `<form method="dialog"><h2>تحديث مكتبة الأنمي</h2><p>الصق ناتج سكربت استخراج الحلقات. ستظهر معاينة قبل الرفع.</p><label>اسم الأنمي<input name="title" required style="display:block;width:95%;margin:8px 0 18px;padding:10px"></label><label>JSON الحلقات<textarea name="json" required rows="9" style="display:block;width:95%;direction:ltr;margin:8px 0 18px;padding:10px"></textarea></label><label>GitHub token<input name="token" type="password" autocomplete="off" required style="display:block;width:95%;direction:ltr;margin:8px 0 18px;padding:10px"></label><p>استخدم Fine-grained token لريبو anime-library فقط، بصلاحية Contents: Read and write. لن يتم حفظه.</p><button type="submit">معاينة التعديل</button> <button type="button" id="cancel-update">إلغاء</button></form>`;
-  const finish = value => { dialog.remove(); resolve(value); };
+  const timer = setTimeout(() => finish(null), 12 * 60 * 1000);
+  const finish = value => { clearTimeout(timer); dialog.remove(); resolve(value); };
   dialog.querySelector('form').addEventListener('submit', event => {
     event.preventDefault();const form=event.currentTarget;
     const value={title:form.elements.title.value.trim(),json:form.elements.json.value,token:form.elements.token.value.trim()};
@@ -45,19 +48,25 @@ try {
   const library=JSON.parse(new TextDecoder().decode(bytes));
   if(!Array.isArray(library.anime))throw new Error('صيغة المكتبة غير صحيحة؛ لم يتم تعديلها.');
   const before=JSON.stringify(library);
-  let show=library.anime.find(a=>String(a.title).trim().toLowerCase()===input.title.toLowerCase());
+  const titleKey = value => String(value).normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
+  const episodeKey = value => {
+    const text=String(value ?? '').trim().replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c)));
+    return /^\d+(?:\.\d+)?$/.test(text) ? Number(text) : NaN;
+  };
+  let show=library.anime.find(a=>a && titleKey(a.title)===titleKey(input.title));
   if(!show){show={title:input.title,episodes:[]};library.anime.push(show);}
   if(!Array.isArray(show.episodes))throw new Error('صيغة حلقات الأنمي المخزن غير صحيحة.');
   let added=0,updated=0;
   for(const episode of valid){
-    if(episode.number===null || episode.number===undefined)throw new Error('رقم حلقة مفقود؛ لم يتم رفع أي تعديل.');
-    let old=show.episodes.find(e=>String(e.number)===String(episode.number));
-    if(!old){old={number:episode.number,title:episode.title || `الحلقة ${episode.number}`,links:[]};show.episodes.push(old);added++;}else updated++;
+    const number=episodeKey(episode.number);
+    if(!Number.isFinite(number) || number<0)throw new Error('رقم حلقة غير صالح؛ لم يتم رفع أي تعديل.');
+    let old=show.episodes.find(e=>e && episodeKey(e.number)===number);
+    if(!old){old={number,title:episode.title || `الحلقة ${number}`,links:[]};show.episodes.push(old);added++;}else updated++;
     if(!Array.isArray(old.links))throw new Error('صيغة الروابط المخزنة غير صحيحة.');
     // Preserve previous links and metadata; refresh matching URLs, add new URLs.
     for(const link of episode.links){const existing=old.links.find(l=>l.url===link.url);if(existing)Object.assign(existing,link);else old.links.push({...link});}
   }
-  show.episodes.sort((a,b)=>Number(a.number)-Number(b.number));
+  show.episodes.sort((a,b)=>episodeKey(a.number)-episodeKey(b.number));
   if(JSON.stringify(library)===before)return {unchanged:true,message:'المكتبة محدثة؛ لا يوجد تعديل لرفعه.'};
   const skipped=incoming.episodes.length-valid.length;
   if(!confirm(`رفع التعديل إلى malqammaz/anime-library/library.json؟\nالأنمي: ${input.title}\nحلقات جديدة: ${added}\nحلقات مدموجة: ${updated}\nحلقات متجاهلة لعدم وجود روابط: ${skipped}\nسيتم الاحتفاظ بالأنميات والحلقات والروابط السابقة.`))return {cancelled:true};

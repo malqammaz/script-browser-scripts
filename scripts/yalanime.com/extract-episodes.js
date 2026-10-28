@@ -3,6 +3,7 @@
 const MAX_EPISODES = 300;
 const REQUEST_DELAY_MS = 350;
 const TIMEOUT_MS = 20000;
+const deadline = Date.now() + 10 * 60 * 1000;
 const origin = location.origin;
 const absolute = (value, base) => {
   try {
@@ -72,6 +73,7 @@ function extract(doc, base) {
 }
 const results = [];
 for (const episode of episodes) {
+  if (Date.now() >= deadline) break;
   try {
     let doc;
     let base = episode.url;
@@ -79,7 +81,7 @@ for (const episode of episodes) {
     if (episode.url === current.href) doc = document;
     else {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      const timer = setTimeout(() => controller.abort(), Math.min(TIMEOUT_MS, deadline - Date.now()));
       try {
         const response = await fetch(episode.url, { credentials: 'same-origin', signal: controller.signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -97,11 +99,11 @@ for (const episode of episodes) {
   if (episode !== episodes[episodes.length - 1]) await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY_MS));
 }
 return {
-  title: document.title,
+  title: document.title.split(/\s+[—–|]\s*/)[0].replace(/^أنمي\s+/,'').replace(/\s+\d{4}\s+مترجم.*$/,'').trim(),
   page: location.href,
   discovered,
   processed: results.length,
-  truncated: discovered > MAX_EPISODES,
+  truncated: discovered > results.length,
   note: 'روابط السيرفرات مستخرجة فقط ولم يتم التحقق من تشغيلها. يجمع الحلقات المدرجة في الصفحة الحالية؛ لا يجتاز صفحات القوائم تلقائياً.',
   episodes: results
 };
