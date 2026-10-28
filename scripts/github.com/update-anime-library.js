@@ -55,6 +55,11 @@ try {
   };
   let show=library.anime.find(a=>a && titleKey(a.title)===titleKey(input.title));
   if(!show){show={title:input.title,episodes:[]};library.anime.push(show);}
+  if (incoming.image) {
+    const image = new URL(incoming.image);
+    if (!/^https?:$/.test(image.protocol)) throw new Error('رابط صورة غير صالح.');
+    show.image = image.href;
+  }
   if(!Array.isArray(show.episodes))throw new Error('صيغة حلقات الأنمي المخزن غير صحيحة.');
   let added=0,updated=0;
   for(const episode of valid){

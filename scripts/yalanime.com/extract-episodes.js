@@ -5,6 +5,7 @@ const REQUEST_DELAY_MS = 350;
 const TIMEOUT_MS = 20000;
 const deadline = Date.now() + 10 * 60 * 1000;
 const origin = location.origin;
+const animeTitle = document.title.split(/\s+[—–|]\s*/)[0].replace(/^[اأإ]نمي\s+/,'').replace(/\s+\d{4}\s+مترجم.*$/,'').trim();
 const absolute = (value, base) => {
   try {
     const u = new URL(value, base);
@@ -77,6 +78,16 @@ function extract(doc, base) {
   return [...found.values()];
 }
 const results = [];
+function findCover(doc, base) {
+  const candidates = [
+    ...Array.from(doc.querySelectorAll('.anime-poster img, .poster img, .post-thumbnail img, .anime-image img')).map(el => el.getAttribute('data-src') || el.getAttribute('src')),
+    ...Array.from(doc.querySelectorAll('meta[property="og:image"], meta[name="twitter:image"]')).map(el => el.content),
+    ...Array.from(doc.querySelectorAll('img[alt]')).filter(el => animeTitle && el.alt.toLowerCase().includes(animeTitle.toLowerCase())).map(el => el.getAttribute('data-src') || el.getAttribute('src'))
+  ];
+  return candidates.map(raw => raw ? absolute(raw, base) : null).find(url => url && !/logo|grey\.gif|placeholder|avatar/i.test(url)) || null;
+}
+let image = findCover(document, location.href);
+let coverAttempted = false;
 for (const episode of episodes) {
   if (Date.now() >= deadline) break;
   try {
@@ -96,6 +107,20 @@ for (const episode of episodes) {
         doc = new DOMParser().parseFromString(html, 'text/html');
       } finally { clearTimeout(timer); }
     }
+    if (!image) image = findCover(doc, base);
+    if (!image && !coverAttempted) {
+      const details = Array.from(doc.querySelectorAll('a[href]')).find(a => /تفاصيل الحلقة/.test(a.textContent));
+      const detailsUrl = details && absolute(details.getAttribute('href'), base);
+      if (detailsUrl && new URL(detailsUrl).origin === origin) {
+        coverAttempted = true;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        try {
+          const response = await fetch(detailsUrl, {credentials:'same-origin', signal:controller.signal});
+          if (response.ok && new URL(response.url).origin === origin) image = findCover(new DOMParser().parseFromString(await response.text(), 'text/html'), response.url);
+        } catch {} finally { clearTimeout(timer); }
+      }
+    }
     const links = extract(doc, base);
     results.push({ ...episode, links, ...(links.length ? {} : { warning: 'لا توجد روابط ظاهرة في HTML؛ قد تتطلب الصفحة JavaScript أو تسجيل دخول.' }) });
   } catch (error) {
@@ -104,7 +129,8 @@ for (const episode of episodes) {
   if (episode !== episodes[episodes.length - 1]) await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY_MS));
 }
 return {
-  title: document.title.split(/\s+[—–|]\s*/)[0].replace(/^[اأإ]نمي\s+/,'').replace(/\s+\d{4}\s+مترجم.*$/,'').trim(),
+  title: animeTitle,
+  ...(image ? { image } : {}),
   page: location.href,
   discovered,
   processed: results.length,
